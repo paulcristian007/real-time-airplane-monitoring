@@ -31,6 +31,7 @@ REDIS_HOST = "localhost"
 REDIS_PORT = 6379
 
 REDIS_GEO_KEY = "aircraft_positions"
+REDIS_GEO_BACKUP_KEY = "aircraft_positions_backup"
 REDIS_ICAO_INDEX = "aicraft_icao"
 
 # -----------------------------
@@ -61,9 +62,11 @@ def is_quasi_static_object(velocity):
     return velocity < 100.0
 
 
-token = None
-
-
+def create_backup():
+    t0 = time.perf_counter()
+    r.copy(REDIS_GEO_KEY, REDIS_GEO_BACKUP_KEY)
+    t1 = time.perf_counter()
+    print(f"Backup time: {t1 - t0:.4f} seconds")
 def fetch_opensky(token=None):
     try:
         if token is None:
@@ -94,14 +97,6 @@ def fetch_opensky(token=None):
     except Exception as e:
         print("Polling error:", e)
 
-
-# time.sleep(max(0, POLL_INTERVAL))
-
-
-lock = threading.Lock()
-count = 0
-
-
 def process_aircraft():
     while aircraft_queue.empty() is not True:
         aircraft = aircraft_queue.get()
@@ -123,6 +118,11 @@ def process_aircraft():
             continue
 
         metadata_key = f"aircraft:{icao24}"
+        if not on_ground or not r.exists(metadata_key):
+            r.geoadd(
+                REDIS_GEO_KEY,
+                (longitude, latitude, icao24)
+            )
         r.hset(metadata_key, mapping={
             "callsign": callsign or "",
             "latitude": latitude,
@@ -130,20 +130,19 @@ def process_aircraft():
             "velocity": velocity or 0,
             "altitude": altitude or 0,
         })
-        if not on_ground:
-            r.geoadd(
-                REDIS_GEO_KEY,
-                (longitude, latitude, icao24)
-            )
+
 
 
         # longitude = 23.59,
 # latitude = 46.77,
 
-def nearby_aircraft_monitor():
+def nearby_aircraft_monitor(update_in_progress):
     try:
+        index = REDIS_GEO_KEY
+        if update_in_progress:
+            index = REDIS_GEO_BACKUP_KEY
         nearby = r.geosearch(
-            REDIS_GEO_KEY,
+            index,
             longitude=28.72,
             latitude=41.27,
             radius=100,
@@ -151,7 +150,7 @@ def nearby_aircraft_monitor():
         )
 
         print(
-            f"Aircraft near Cluj: {len(nearby)}"
+            f"Aircraft near Cluj: {len(nearby)}, update is: {update_in_progress}"
         )
         for icao24 in nearby:
             details = r.hgetall(f"aircraft:{icao24}")
@@ -173,6 +172,7 @@ for _ in range(5):
     for worker in workers:
         worker.start()
 
+    nearby_aircraft_monitor(update_in_progress=True)
     # put queries here -> taking place during an update operation
     for worker in workers:
         worker.join()
@@ -181,7 +181,8 @@ for _ in range(5):
     print(f"Processing time: {end - start:.4f} seconds")
 
     start = time.perf_counter()
-    nearby_aircraft_monitor()
+    nearby_aircraft_monitor(update_in_progress=False)
     end = time.perf_counter()
     print(f"Query time: {end - start:.4f} seconds")
-    time.sleep(10)
+    create_backup()
+    time.sleep(5)
