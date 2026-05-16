@@ -1,9 +1,9 @@
 import threading
 import time
 import requests
-import redis
 import queue
 from dotenv import load_dotenv
+from redis_index import RedisIndex
 import os
 
 
@@ -27,24 +27,6 @@ def get_open_sky_api_token():
 OPENSKY_URL = "https://opensky-network.org/api/states/all"
 POLL_INTERVAL = 10
 
-REDIS_HOST = "localhost"
-REDIS_PORT = 6379
-
-REDIS_GEO_KEY = "aircraft_positions"
-REDIS_GEO_BACKUP_KEY = "aircraft_positions_backup"
-REDIS_ICAO_INDEX = "aicraft_icao"
-
-# -----------------------------
-# Redis connection
-# -----------------------------
-
-r = redis.Redis(
-    host=REDIS_HOST,
-    port=REDIS_PORT,
-    decode_responses=True
-)
-r.flushall()
-
 aircraft_queue = queue.Queue()
 
 
@@ -62,11 +44,6 @@ def is_quasi_static_object(velocity):
     return velocity < 100.0
 
 
-def create_backup():
-    t0 = time.perf_counter()
-    r.copy(REDIS_GEO_KEY, REDIS_GEO_BACKUP_KEY)
-    t1 = time.perf_counter()
-    print(f"Backup time: {t1 - t0:.4f} seconds")
 def fetch_opensky(token=None):
     try:
         if token is None:
@@ -97,12 +74,11 @@ def fetch_opensky(token=None):
     except Exception as e:
         print("Polling error:", e)
 
-def process_aircraft():
+def process_aircraft(index):
     while aircraft_queue.empty() is not True:
         aircraft = aircraft_queue.get()
         icao24 = aircraft[0]
         callsign = aircraft[1]
-
         longitude = aircraft[5]
         latitude = aircraft[6]
         on_ground = aircraft[8]
@@ -118,71 +94,42 @@ def process_aircraft():
             continue
 
         metadata_key = f"aircraft:{icao24}"
-        if not on_ground or not r.exists(metadata_key):
-            r.geoadd(
-                REDIS_GEO_KEY,
-                (longitude, latitude, icao24)
-            )
-        r.hset(metadata_key, mapping={
-            "callsign": callsign or "",
-            "latitude": latitude,
-            "longitude": longitude,
-            "velocity": velocity or 0,
-            "altitude": altitude or 0,
-        })
-
-
-
+        if not on_ground or not index.is_stored_in_index(metadata_key):
+            index.store_in_index(icao24, latitude, longitude)
+        index.store_metadata(metadata_key, callsign, latitude, longitude, velocity, altitude)
         # longitude = 23.59,
 # latitude = 46.77,
 
-def nearby_aircraft_monitor(update_in_progress):
-    try:
-        index = REDIS_GEO_KEY
-        if update_in_progress:
-            index = REDIS_GEO_BACKUP_KEY
-        nearby = r.geosearch(
-            index,
-            longitude=28.72,
-            latitude=41.27,
-            radius=100,
-            unit="km"
-        )
-
-        print(
-            f"Aircraft near Cluj: {len(nearby)}, update is: {update_in_progress}"
-        )
-        for icao24 in nearby:
-            details = r.hgetall(f"aircraft:{icao24}")
-            print(icao24, details)
-
-    except Exception as e:
-        print("Query error:", e)
 
 
-for _ in range(5):
-    start = time.perf_counter()
-    fetch_opensky()
-    workers = []
-    for _ in range(12):
-        workers.append(threading.Thread(
-            target=process_aircraft,
-            daemon=True
-        ))
-    for worker in workers:
-        worker.start()
+def main():
+    for _ in range(5):
+        start = time.perf_counter()
+        fetch_opensky()
+        workers = []
+        index = RedisIndex()
+        for _ in range(12):
+            workers.append(threading.Thread(
+                target=process_aircraft,
+                args=(index,),
+                daemon=True
+            ))
+        for worker in workers:
+            worker.start()
 
-    nearby_aircraft_monitor(update_in_progress=True)
-    # put queries here -> taking place during an update operation
-    for worker in workers:
-        worker.join()
+        #nearby_aircraft_monitor(update_in_progress=True)
+        # put queries here -> taking place during an update operation
+        for worker in workers:
+            worker.join()
 
-    end = time.perf_counter()
-    print(f"Processing time: {end - start:.4f} seconds")
+        end = time.perf_counter()
+        print(f"Processing time: {end - start:.4f} seconds")
 
-    start = time.perf_counter()
-    nearby_aircraft_monitor(update_in_progress=False)
-    end = time.perf_counter()
-    print(f"Query time: {end - start:.4f} seconds")
-    create_backup()
-    time.sleep(5)
+        start = time.perf_counter()
+        index.nearby_aircraft_monitor(update_in_progress=False)
+        end = time.perf_counter()
+        print(f"Query time: {end - start:.4f} seconds")
+        index.create_backup()
+        time.sleep(5)
+
+main()
