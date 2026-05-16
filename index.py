@@ -23,5 +23,5 @@ class GeospatialIndex:
     def query_index(self, update_in_progress, latitude, longitude):
         pass
 
-    def measure_memory_usage(self):
+    def get_memory_usage(self):
         pass

@@ -1,10 +1,12 @@
 import threading
 import time
+import csv
 import requests
 import queue
+from datetime import datetime
 from dotenv import load_dotenv
 
-# from mongodb_index import MongoDbIndex
+from mongodb_index import MongoDbIndex
 from redis_index import RedisIndex
 import os
 
@@ -46,12 +48,10 @@ def is_quasi_static_object(velocity):
     return velocity < 100.0
 
 
-def fetch_opensky(token=None, no_aircrafts=None):
+def fetch_opensky(token, no_aircrafts=None):
     try:
-        if token is None:
-            get_open_sky_api_token()
         headers = {
-            "Authorization": f"Bearer {get_open_sky_api_token()}"
+            "Authorization": f"Bearer {token}"
         }
         response = requests.get(
             OPENSKY_URL,
@@ -108,12 +108,57 @@ def process_aircraft(index):
         # longitude = 23.59,
 # latitude = 46.77,
 
+def run_experiments():
+    iterations = 10
+    no_threads = [8, 12]
+    no_aircrafts = [10000]
+    index_type = 'mongodb'
+    experiments_loop(iterations, no_threads, no_aircrafts, index_type)
 
+def experiments_loop(iterations, no_threads, no_aircrafts, index_type):
+    results = []
+    token = get_open_sky_api_token()
+    for no_aircraft in no_aircrafts:
+        for no_thread in no_threads:
+            execution_times = []
+            index = None
+            if index_type == 'redis':
+                index = RedisIndex()
+            elif index_type == 'mongodb':
+                index = MongoDbIndex()
+
+            for _ in range(iterations):
+                fetch_opensky(token=token, no_aircrafts=no_aircraft)
+                start = time.perf_counter()
+                workers = []
+                for _ in range(no_thread):
+                    workers.append(threading.Thread(
+                        target=process_aircraft,
+                        args=(index,),
+                        daemon=True
+                    ))
+                for worker in workers:
+                    worker.start()
+                for worker in workers:
+                    worker.join()
+
+                end = time.perf_counter()
+                execution_times.append(end - start)
+
+            avg_time = sum(execution_times) / len(execution_times)
+            index_size, metadata_size = index.get_memory_usage()
+            results.append((no_aircraft, no_thread,
+                            f"{avg_time:.2f} s", f"{index_size:.2f} MB", f"{metadata_size:.2f} MB"))
+
+    timestamp = datetime.now().strftime("%Y-%m-%d_%H%M%S")
+    with open(f"./experiments/{index_type}_results_{timestamp}.csv", "w", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(["aircrafts", "threads", "average time", "index size", "metadata size"])
+        writer.writerows(results)
 
 
 def main():
     for _ in range(5):
-        start = time.perf_counter()
         fetch_opensky()
         workers = []
         index = RedisIndex()
@@ -141,4 +186,5 @@ def main():
         index.create_backup()
         time.sleep(10)
 
-main()
+#main()
+run_experiments()

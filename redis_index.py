@@ -24,6 +24,7 @@ class RedisIndex(GeospatialIndex):
         )
 
     def store_metadata(self, metadata_key, callsign, latitude, longitude, velocity, altitude):
+        metadata_key = f"aircraft:{metadata_key}"
         self.r.hset(metadata_key, mapping={
             "callsign": callsign or "",
             "latitude": latitude,
@@ -33,7 +34,7 @@ class RedisIndex(GeospatialIndex):
         })
 
     def is_stored_in_index(self, metadata_key):
-        return self.r.exists(metadata_key)
+        return self.r.exists(f"aircraft:{metadata_key}")
 
     def create_backup(self):
         t0 = time.perf_counter()
@@ -64,4 +65,17 @@ class RedisIndex(GeospatialIndex):
 
         except Exception as e:
             print("Query error:", e)
+
+    def get_memory_usage(self):
+        index_size = self.r.memory_usage(self.REDIS_GEO_KEY)
+        metadata_size = 0
+        for key in self.r.scan_iter("aircraft:*"):
+            metadata_size += self.r.memory_usage(key)
+
+        megabyte_size = 1024 * 1024
+        index_size /= megabyte_size
+        metadata_size /= megabyte_size
+
+        print(f"Index size: {index_size} MB, Metadata size: {metadata_size} MB")
+        return index_size, metadata_size
 

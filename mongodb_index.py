@@ -68,12 +68,12 @@ class MongoDbIndex(GeospatialIndex):
         )
 
     def is_stored_in_index(self, metadata_key):
-        '''return self.collection.find_one(
+        return self.collection.find_one(
             {"icao24": metadata_key},
             {"_id": 1}
-        ) is not None'''
+        ) is not None
 
-        return self.collection.count_documents({"icao24": metadata_key}, limit=1) > 0
+        #return self.collection.count_documents({"icao24": metadata_key}, limit=1) > 0
 
 
     def create_backup(self):
@@ -146,3 +146,12 @@ class MongoDbIndex(GeospatialIndex):
 
         except Exception as e:
             print("Query error:", e)
+
+    def get_memory_usage(self):
+        stats = self.db.command("collStats", "aircraft_positions")
+        print(stats["indexSizes"])
+
+        megabyte_size = 1024 * 1024
+        index_size = stats["indexSizes"]["location_2dsphere"] / megabyte_size
+        metadata_size = (stats["indexSizes"]["_id_"] + stats["indexSizes"]["icao24_1"]) / megabyte_size
+        return index_size, metadata_size
