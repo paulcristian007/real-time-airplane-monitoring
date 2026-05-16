@@ -3,6 +3,8 @@ import time
 import requests
 import queue
 from dotenv import load_dotenv
+
+# from mongodb_index import MongoDbIndex
 from redis_index import RedisIndex
 import os
 
@@ -44,7 +46,7 @@ def is_quasi_static_object(velocity):
     return velocity < 100.0
 
 
-def fetch_opensky(token=None):
+def fetch_opensky(token=None, no_aircrafts=None):
     try:
         if token is None:
             get_open_sky_api_token()
@@ -62,11 +64,16 @@ def fetch_opensky(token=None):
             states = data.get("states", [])
             print(f"Fetched {len(states)} aircraft")
             count = 0
+            totalCount = 0
             for aircraft in states:
                 aircraft_queue.put(aircraft)
                 if aircraft[8]:
                     count += 1
+                totalCount += 1
+                if no_aircrafts and totalCount == no_aircrafts:
+                    break
 
+            print(totalCount)
             print('stopped: ', count)
         else:
             print("OpenSky error:", response.status_code)
@@ -93,12 +100,14 @@ def process_aircraft(index):
         if latitude is None or longitude is None:
             continue
 
-        metadata_key = f"aircraft:{icao24}"
+        #metadata_key = f"aircraft:{icao24}"
+        metadata_key = icao24
         if not on_ground or not index.is_stored_in_index(metadata_key):
             index.store_in_index(icao24, latitude, longitude)
         index.store_metadata(metadata_key, callsign, latitude, longitude, velocity, altitude)
         # longitude = 23.59,
 # latitude = 46.77,
+
 
 
 
@@ -130,6 +139,6 @@ def main():
         end = time.perf_counter()
         print(f"Query time: {end - start:.4f} seconds")
         index.create_backup()
-        time.sleep(5)
+        time.sleep(10)
 
 main()

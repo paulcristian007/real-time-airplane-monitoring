@@ -14,5 +14,14 @@ class GeospatialIndex:
     def create_backup(self):
         pass
 
+    def fetch_coordinates(self):
+        pass
+
+    def fetch_metadata(self):
+        pass
+
     def query_index(self, update_in_progress, latitude, longitude):
+        pass
+
+    def measure_memory_usage(self):
         pass

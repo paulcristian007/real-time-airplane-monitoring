@@ -49,8 +49,8 @@ class RedisIndex(GeospatialIndex):
                 index = self.REDIS_GEO_BACKUP_KEY
             nearby = self.r.geosearch(
                 index,
-                longitude=28.72,
-                latitude=41.27,
+                longitude=23.59,
+                latitude=46.77,
                 radius=100,
                 unit="km"
             )
@@ -59,7 +59,7 @@ class RedisIndex(GeospatialIndex):
                 f"Aircraft near Cluj: {len(nearby)}, update is: {update_in_progress}"
             )
             for icao24 in nearby:
-                details = self.r.hgetall(f"aircraft:{icao24}")
+                details = self.r.hgetall(icao24)
                 print(icao24, details)
 
         except Exception as e:
