@@ -113,20 +113,13 @@ class MongoDbIndex(GeospatialIndex):
             })
 
             nearby_list = list(nearby)
-
-            print(
-                f"Aircraft near Cluj: "
-                f"{len(nearby_list)}, "
-                f"update is: {update_in_progress}"
-            )
-
+            results = []
             for aircraft in nearby_list:
                 #icao = nearby.get("icao24")
                 #print(nearby)
                 #aircraft = self.collection.find_one({"icao24": icao})
                 #aircraft["location"]["coordinates"][1],
-                print(
-                    {
+                results.append({
                         "callsign":
                             aircraft["callsign"],
 
@@ -141,9 +134,8 @@ class MongoDbIndex(GeospatialIndex):
 
                         "altitude":
                             aircraft["altitude"]
-                    }
-                )
-
+                    })
+            return results
         except Exception as e:
             print("Query error:", e)
 

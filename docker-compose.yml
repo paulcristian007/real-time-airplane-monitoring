@@ -10,3 +10,13 @@ services:
     container_name: mongodb
     ports:
       - "27017:27017"
+
+  postgis:
+    image: postgis/postgis:16-3.4
+    container_name: postgis
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: aircraft_db
+    ports:
+      - "5432:5432"

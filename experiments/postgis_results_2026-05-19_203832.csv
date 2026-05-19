@@ -1,0 +1,5 @@
+aircrafts,threads,average time,index size,metadata size
+5000,1,14.73 s,3.12 MB,1.76 MB
+7500,1,21.94 s,3.23 MB,1.59 MB
+10000,1,29.48 s,3.35 MB,1.92 MB
+11500,1,33.05 s,3.98 MB,2.40 MB

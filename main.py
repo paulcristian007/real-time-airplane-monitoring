@@ -8,6 +8,7 @@ from dotenv import load_dotenv
 
 from mongodb_index import MongoDbIndex
 from redis_index import RedisIndex
+from postgis_index import PostGISIndex
 import os
 
 
@@ -73,6 +74,13 @@ def fetch_opensky(token, no_aircrafts=None):
                 if no_aircrafts and totalCount == no_aircrafts:
                     break
 
+            if no_aircrafts and totalCount < no_aircrafts:
+                for aircraft in states:
+                    aircraft[0] += '#'
+                    aircraft_queue.put(aircraft)
+                    totalCount += 1
+                    if no_aircrafts and totalCount == no_aircrafts:
+                        break
             print(totalCount)
             print('stopped: ', count)
         else:
@@ -109,10 +117,10 @@ def process_aircraft(index):
 # latitude = 46.77,
 
 def run_experiments():
-    iterations = 10
-    no_threads = [8, 12]
-    no_aircrafts = [10000]
-    index_type = 'mongodb'
+    iterations = 5
+    no_threads = [1]
+    no_aircrafts = [5000, 7500, 10000, 11500]
+    index_type = 'postgis'
     experiments_loop(iterations, no_threads, no_aircrafts, index_type)
 
 def experiments_loop(iterations, no_threads, no_aircrafts, index_type):
@@ -126,7 +134,8 @@ def experiments_loop(iterations, no_threads, no_aircrafts, index_type):
                 index = RedisIndex()
             elif index_type == 'mongodb':
                 index = MongoDbIndex()
-
+            elif index_type == 'postgis':
+                index = PostGISIndex()
             for _ in range(iterations):
                 fetch_opensky(token=token, no_aircrafts=no_aircraft)
                 start = time.perf_counter()
@@ -157,17 +166,69 @@ def experiments_loop(iterations, no_threads, no_aircrafts, index_type):
         writer.writerows(results)
 
 
+def run_query_experiments():
+    no_aircrafts = [5000, 7500, 10000, 11500]
+    no_queries = [1000, 5000, 10000]
+    index_type = 'postgis'
+    experiments_query_loop(12, no_aircrafts, no_queries, index_type)
+
+def run_queries(index, no_queries):
+    #print(no_queries)
+    for _ in range(no_queries):
+        index.nearby_aircraft_monitor(update_in_progress=False)
+
+def experiments_query_loop(no_threads, no_aircrafts, no_queries, index_type):
+    results = []
+    token = get_open_sky_api_token()
+    for no_aircraft in no_aircrafts:
+        for queries in no_queries:
+            index = None
+            if index_type == 'redis':
+                index = RedisIndex()
+            elif index_type == 'mongodb':
+                index = MongoDbIndex()
+            elif index_type == 'postgis':
+                index = PostGISIndex()
+            workers = []
+            fetch_opensky(token=token, no_aircrafts=no_aircraft)
+            process_aircraft(index)
+
+            for _ in range(no_threads):
+                workers.append(threading.Thread(
+                    target=run_queries,
+                    args=(index, int(queries / no_threads)),
+                    daemon=True
+                ))
+
+            start = time.perf_counter()
+            for worker in workers:
+                worker.start()
+            for worker in workers:
+                worker.join()
+            end = time.perf_counter()
+            results.append((no_aircraft, queries, f"{end - start:.2f} s"))
+
+    timestamp = datetime.now().strftime("%Y-%m-%d_%H%M%S")
+    with open(f"./experiments/{index_type}_query_results_{timestamp}.csv", "w", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(["aircrafts", "queries", "average query time"])
+        writer.writerows(results)
+
+
 def main():
+    token = get_open_sky_api_token()
     for _ in range(5):
-        fetch_opensky()
+        fetch_opensky(token)
         workers = []
-        index = RedisIndex()
-        for _ in range(12):
+        index = MongoDbIndex()
+        for _ in range(1):
             workers.append(threading.Thread(
                 target=process_aircraft,
                 args=(index,),
                 daemon=True
             ))
+
+        start = time.perf_counter()
         for worker in workers:
             worker.start()
 
@@ -184,7 +245,8 @@ def main():
         end = time.perf_counter()
         print(f"Query time: {end - start:.4f} seconds")
         index.create_backup()
-        time.sleep(10)
+        time.sleep(2)
 
 #main()
-run_experiments()
+#run_experiments()
+run_query_experiments()
