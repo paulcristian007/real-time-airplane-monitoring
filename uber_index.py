@@ -12,7 +12,6 @@ class UberIndex(GeospatialIndex):
         self.cell_to_aircraft = defaultdict(set)
         self.aircraft_metadata = {}
         self.resolution = 3
-        self.locks = [Lock() for _ in range(64)]
         REDIS_HOST = "localhost"
         REDIS_PORT = 6379
         self.r = redis.Redis(
@@ -21,31 +20,100 @@ class UberIndex(GeospatialIndex):
             decode_responses=True
         )
         self.r.flushall()
+        self.old_cells = {}
+        self.iteration = 0
 
-    def reset(self):
-        self.r.flushall()
+    def load_in_memory(self):
+        self.metadata = {}
+        keys = list(self.r.scan_iter("aircraft:*"))
+        pipe = self.r.pipeline(transaction=False)
+        for key in keys:
+            pipe.hgetall(key)
 
-    def is_stored_in_index(self, metadata_key):
-        return False
-        #return self.r.exists(f"aircraft:{metadata_key}")
+        aircrafts = pipe.execute()
+        if len(keys) > 0:
+            for key, aircraft in zip(keys, aircrafts):
+                self.metadata[key] = aircraft
+                self.metadata[key]['processed'] = False
 
-    def store_metadata(self, metadata_key, callsign, latitude, longitude, velocity, altitude):
-        metadata_key = f"aircraft:{metadata_key}"
-        self.r.hset(metadata_key, mapping={
-            "callsign": callsign or "",
-            "latitude": latitude,
-            "longitude": longitude,
-            "velocity": velocity or 0,
-            "altitude": altitude or 0,
-        })
+        keys = list(self.r.scan_iter("cell:*"))
+        pipe = self.r.pipeline(transaction=False)
+        for key in keys:
+            pipe.lrange(key, 0, -1)
+        cells_results = pipe.execute()
 
-    def store_in_index(self, icao24, latitude, longitude):
-        cell = h3.latlng_to_cell(latitude, longitude, self.resolution)
-        lock = self.locks[hash(cell) % 64]
-        lock.acquire()
-        self.cell_to_aircraft[cell].add(icao24)
-        lock.release()
-        return cell
+        for key, result in zip(keys, cells_results):
+            cell = key.split(":")[1]
+            self.cell_to_aircraft[cell] = result
+
+
+    def cell_did_not_change(self, icao24, cell, optimizer, skip):
+        if skip:
+            return True
+        if not optimizer:
+            return False
+        return icao24 in self.old_cells and cell == self.old_cells[icao24]
+
+    def process_aicrafts(self, aircrafts_chunk, optimizer=True, quasi_static=True):
+        pipeline = self.r.pipeline(transaction=False)
+        stored_aircrafts = []
+        for aircraft in aircrafts_chunk:
+            icao24 = aircraft[0]
+            callsign = aircraft[1]
+            longitude = aircraft[5]
+            latitude = aircraft[6]
+            on_ground = aircraft[8]
+            velocity = aircraft[9]
+            if velocity is not None:
+                velocity = self.convert_speed_to_knots(float(velocity))
+            altitude = aircraft[13]
+            if altitude is not None:
+                altitude = self.convert_altitude_to_feet(float(altitude))
+
+            # Ignore invalid coordinates
+            if latitude is None or longitude is None:
+                continue
+
+            skip = False
+            if quasi_static and on_ground:
+                skip = True
+
+            cell = h3.latlng_to_cell(latitude, longitude, self.resolution)
+            if self.cell_did_not_change(icao24, cell, optimizer, skip):
+                skip = True
+            elif icao24 in self.old_cells:
+                pipeline.lrem(f"cell:{self.old_cells[icao24]}", 1, icao24)
+            '''if not skip:
+                if optimizer and icao24 in self.old_cells and self.old_cells[icao24] == cell:
+                    skip = True
+                    equalizer += 1
+                elif not optimizer and icao24 in self.old_cells:
+                    pipeline.lrem(f"cell:{self.old_cells[icao24]}", 1, icao24)
+                    count += 1'''
+            self.old_cells[icao24] = cell
+
+            metadata_key = f"aircraft:{icao24}"
+            if not skip or not self.is_stored_in_index(metadata_key):
+                pipeline.rpush(f"cell:{cell}", icao24)
+                stored_aircrafts.append(icao24)
+
+            if metadata_key in self.metadata:
+                self.metadata[metadata_key]['processed'] = True
+
+            if not on_ground or not self.is_stored_in_index(metadata_key):
+                pipeline.hset(metadata_key, mapping={
+                    "callsign": callsign or "",
+                    "latitude": latitude,
+                    "longitude": longitude,
+                    "velocity": velocity or 0,
+                    "altitude": altitude or 0,
+                })
+
+        for key in self.metadata:
+            if self.metadata[key]['processed'] is not None and self.metadata[key]['processed'] is False:
+                pipeline.delete(key)
+
+        result = pipeline.execute()
 
 
     def nearby_aircraft_monitor(self, update_in_progress):

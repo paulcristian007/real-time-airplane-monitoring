@@ -9,6 +9,7 @@ from dotenv import load_dotenv
 from mongodb_index import MongoDbIndex
 from redis_index import RedisIndex
 from postgis_index import PostGISIndex
+from uber_index import UberIndex
 import os
 
 
@@ -16,7 +17,6 @@ def get_open_sky_api_token():
     load_dotenv()
     CLIENT_ID = os.getenv("CLIENT_ID")
     CLIENT_SECRET = os.getenv("CLIENT_SECRET")
-
     response = requests.post(
         "https://auth.opensky-network.org/auth/realms/opensky-network/protocol/openid-connect/token",
         data={
@@ -33,14 +33,6 @@ OPENSKY_URL = "https://opensky-network.org/api/states/all"
 POLL_INTERVAL = 10
 
 aircraft_queue = queue.Queue()
-
-
-def convert_speed_to_knots(velocity):
-    return velocity * 1.94384
-
-
-def convert_altitude_to_feet(altitude):
-    return altitude * 3.28084
 
 
 def is_quasi_static_object(velocity):
@@ -66,32 +58,37 @@ def fetch_opensky(token, no_aircrafts=None):
             print(f"Fetched {len(states)} aircraft")
             count = 0
             totalCount = 0
+            aircrafts = []
             for aircraft in states:
-                aircraft_queue.put(aircraft)
+                aircrafts.append(aircraft)
                 if aircraft[8]:
                     count += 1
                 totalCount += 1
                 if no_aircrafts and totalCount == no_aircrafts:
                     break
 
-            if no_aircrafts and totalCount < no_aircrafts:
+            while totalCount < no_aircrafts:
                 for aircraft in states:
                     aircraft[0] += '#'
-                    aircraft_queue.put(aircraft)
+                    if aircraft[8]:
+                        count += 1
+                    aircrafts.append(aircraft)
                     totalCount += 1
                     if no_aircrafts and totalCount == no_aircrafts:
                         break
             print(totalCount)
             print('stopped: ', count)
+            return aircrafts
         else:
             print("OpenSky error:", response.status_code)
+            return None
 
     except Exception as e:
         print("Polling error:", e)
-
-def process_aircraft(index):
-    while aircraft_queue.empty() is not True:
-        aircraft = aircraft_queue.get()
+        return None
+def process_aircrafts(index, aircrafts_chunk):
+    index.process_aicrafts(aircrafts_chunk)
+    '''for aircraft in aircrafts_chunk:
         icao24 = aircraft[0]
         callsign = aircraft[1]
         longitude = aircraft[5]
@@ -112,57 +109,51 @@ def process_aircraft(index):
         metadata_key = icao24
         if not on_ground or not index.is_stored_in_index(metadata_key):
             index.store_in_index(icao24, latitude, longitude)
-        index.store_metadata(metadata_key, callsign, latitude, longitude, velocity, altitude)
+        index.store_metadata(metadata_key, callsign, latitude, longitude, velocity, altitude)'''
+
         # longitude = 23.59,
 # latitude = 46.77,
 
 def run_experiments():
-    iterations = 5
-    no_threads = [1]
-    no_aircrafts = [5000, 7500, 10000, 11500]
-    index_type = 'postgis'
-    experiments_loop(iterations, no_threads, no_aircrafts, index_type)
+    iterations = 10
+    no_aircrafts = [50000]#, 10000, 25000, 50000]
+    index_type = 'uber'
+    experiments_loop(iterations, no_aircrafts, index_type)
 
-def experiments_loop(iterations, no_threads, no_aircrafts, index_type):
+
+def experiments_loop(iterations, no_aircrafts, index_type):
     results = []
     token = get_open_sky_api_token()
     for no_aircraft in no_aircrafts:
-        for no_thread in no_threads:
-            execution_times = []
-            index = None
-            if index_type == 'redis':
-                index = RedisIndex()
-            elif index_type == 'mongodb':
-                index = MongoDbIndex()
-            elif index_type == 'postgis':
-                index = PostGISIndex()
-            for _ in range(iterations):
-                fetch_opensky(token=token, no_aircrafts=no_aircraft)
-                start = time.perf_counter()
-                workers = []
-                for _ in range(no_thread):
-                    workers.append(threading.Thread(
-                        target=process_aircraft,
-                        args=(index,),
-                        daemon=True
-                    ))
-                for worker in workers:
-                    worker.start()
-                for worker in workers:
-                    worker.join()
-
-                end = time.perf_counter()
+        execution_times = []
+        index = None
+        if index_type == 'redis':
+            index = RedisIndex()
+        elif index_type == 'mongodb':
+            index = MongoDbIndex()
+        elif index_type == 'postgis':
+            index = PostGISIndex()
+        else:
+            index = UberIndex()
+        for i in range(iterations + 1):
+            fetch_opensky(token=token, no_aircrafts=no_aircraft)
+            aircrafts = fetch_opensky(token, no_aircrafts=no_aircraft)
+            start = time.perf_counter()
+            index.load_in_memory()
+            process_aircrafts(index, aircrafts)
+            end = time.perf_counter()
+            if i > 0:
                 execution_times.append(end - start)
+            print(f"Processing time: {end - start:.4f} seconds")
 
-            avg_time = sum(execution_times) / len(execution_times)
-            index_size, metadata_size = index.get_memory_usage()
-            results.append((no_aircraft, no_thread,
-                            f"{avg_time:.2f} s", f"{index_size:.2f} MB", f"{metadata_size:.2f} MB"))
+        avg_time = sum(execution_times) / len(execution_times)
+        #index_size, metadata_size = index.get_memory_usage()
+        results.append((no_aircraft, f"{avg_time:.2f} s"))
 
     timestamp = datetime.now().strftime("%Y-%m-%d_%H%M%S")
     with open(f"./experiments/{index_type}_results_{timestamp}.csv", "w", newline="") as f:
         writer = csv.writer(f)
-        writer.writerow(["aircrafts", "threads", "average time", "index size", "metadata size"])
+        writer.writerow(["aircrafts", "average time"])
         writer.writerows(results)
 
 
@@ -189,6 +180,8 @@ def experiments_query_loop(no_threads, no_aircrafts, no_queries, index_type):
                 index = MongoDbIndex()
             elif index_type == 'postgis':
                 index = PostGISIndex()
+            else:
+                index = UberIndex()
             workers = []
             fetch_opensky(token=token, no_aircrafts=no_aircraft)
             process_aircraft(index)
@@ -217,36 +210,23 @@ def experiments_query_loop(no_threads, no_aircrafts, no_queries, index_type):
 
 def main():
     token = get_open_sky_api_token()
+    no_thread = 1
+    index = UberIndex()
     for _ in range(5):
-        fetch_opensky(token)
-        workers = []
-        index = MongoDbIndex()
-        for _ in range(1):
-            workers.append(threading.Thread(
-                target=process_aircraft,
-                args=(index,),
-                daemon=True
-            ))
-
+        aircrafts = fetch_opensky(token, no_aircrafts=5000)
         start = time.perf_counter()
-        for worker in workers:
-            worker.start()
-
-        #nearby_aircraft_monitor(update_in_progress=True)
-        # put queries here -> taking place during an update operation
-        for worker in workers:
-            worker.join()
-
+        index.load_in_memory()
+        process_aircrafts(index, aircrafts)
         end = time.perf_counter()
         print(f"Processing time: {end - start:.4f} seconds")
 
         start = time.perf_counter()
-        index.nearby_aircraft_monitor(update_in_progress=False)
+        #index.nearby_aircraft_monitor(update_in_progress=False)
         end = time.perf_counter()
         print(f"Query time: {end - start:.4f} seconds")
-        index.create_backup()
+        #index.create_backup()
         time.sleep(2)
 
-#main()
+main()
 #run_experiments()
-run_query_experiments()
+#run_query_experiments()

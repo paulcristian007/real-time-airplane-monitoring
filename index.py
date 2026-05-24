@@ -1,6 +1,15 @@
 class GeospatialIndex:
     def __init__(self):
         pass
+        self.metadata = {}
+
+
+    def load_in_memory(self):
+        pass
+
+    def process_aicrafts(self, aircrafts_chunk, optimizer=False, quasi_static=False):
+        pass
+
 
     def store_metadata(self, metadata_key, callsign, latitude, longitude, velocity, altitude):
         pass
@@ -9,7 +18,7 @@ class GeospatialIndex:
         pass
 
     def is_stored_in_index(self, metadata_key):
-        pass
+        return metadata_key in self.metadata
 
     def create_backup(self):
         pass
@@ -24,4 +33,10 @@ class GeospatialIndex:
         pass
 
     def get_memory_usage(self):
-        pass
+        return 0, 0
+
+    def convert_speed_to_knots(self, velocity):
+        return velocity * 1.94384
+
+    def convert_altitude_to_feet(self, altitude):
+        return altitude * 3.28084
