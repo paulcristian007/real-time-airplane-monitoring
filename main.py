@@ -86,30 +86,8 @@ def fetch_opensky(token, no_aircrafts=None):
     except Exception as e:
         print("Polling error:", e)
         return None
-def process_aircrafts(index, aircrafts_chunk):
-    index.process_aicrafts(aircrafts_chunk)
-    '''for aircraft in aircrafts_chunk:
-        icao24 = aircraft[0]
-        callsign = aircraft[1]
-        longitude = aircraft[5]
-        latitude = aircraft[6]
-        on_ground = aircraft[8]
-        velocity = aircraft[9]
-        if velocity is not None:
-            velocity = convert_speed_to_knots(float(velocity))
-        altitude = aircraft[13]
-        if altitude is not None:
-            altitude = convert_altitude_to_feet(float(altitude))
 
-        # Ignore invalid coordinates
-        if latitude is None or longitude is None:
-            continue
 
-        #metadata_key = f"aircraft:{icao24}"
-        metadata_key = icao24
-        if not on_ground or not index.is_stored_in_index(metadata_key):
-            index.store_in_index(icao24, latitude, longitude)
-        index.store_metadata(metadata_key, callsign, latitude, longitude, velocity, altitude)'''
 
         # longitude = 23.59,
 # latitude = 46.77,
@@ -117,7 +95,7 @@ def process_aircrafts(index, aircrafts_chunk):
 def run_experiments():
     iterations = 10
     no_aircrafts = [50000]#, 10000, 25000, 50000]
-    index_type = 'uber'
+    index_type = 'redis'
     experiments_loop(iterations, no_aircrafts, index_type)
 
 
@@ -136,11 +114,10 @@ def experiments_loop(iterations, no_aircrafts, index_type):
         else:
             index = UberIndex()
         for i in range(iterations + 1):
-            fetch_opensky(token=token, no_aircrafts=no_aircraft)
             aircrafts = fetch_opensky(token, no_aircrafts=no_aircraft)
             start = time.perf_counter()
             index.load_in_memory()
-            process_aircrafts(index, aircrafts)
+            index.process_aircrafts(index, aircrafts)
             end = time.perf_counter()
             if i > 0:
                 execution_times.append(end - start)
@@ -210,22 +187,25 @@ def experiments_query_loop(no_threads, no_aircrafts, no_queries, index_type):
 
 def main():
     token = get_open_sky_api_token()
-    no_thread = 1
     index = UberIndex()
     for _ in range(5):
-        aircrafts = fetch_opensky(token, no_aircrafts=5000)
+        aircrafts = fetch_opensky(token, no_aircrafts=10000)
         start = time.perf_counter()
         index.load_in_memory()
-        process_aircrafts(index, aircrafts)
+        updateCount, indexCount = index.process_aircrafts(aircrafts, quasi_static_optimization=True, update_optimization=True, add_optimization=False)
         end = time.perf_counter()
+
+        print(f"Number of updates: {updateCount}")
+        print(f"Number of ops in index: {indexCount}")
+
         print(f"Processing time: {end - start:.4f} seconds")
 
         start = time.perf_counter()
-        #index.nearby_aircraft_monitor(update_in_progress=False)
+        index.nearby_aircraft_monitor(update_in_progress=False)
         end = time.perf_counter()
         print(f"Query time: {end - start:.4f} seconds")
         #index.create_backup()
-        time.sleep(2)
+        time.sleep(5)
 
 main()
 #run_experiments()

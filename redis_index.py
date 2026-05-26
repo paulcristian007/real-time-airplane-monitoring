@@ -18,10 +18,28 @@ class RedisIndex(GeospatialIndex):
         self.metadata = {}
         self.r.flushall()
 
-    def remove_aircrafts(self):
-        pass
+    def store_metadata(self, transaction, icao24, fields):
+        transaction.hset(f"aircraft:{icao24}", mapping=fields)
 
-    def process_aicrafts(self, aircrafts_chunk, optimizer=False, quasi_static=True):
+    def run_transaction(self, transaction):
+        transaction.execute()
+
+    def remove_finished_aircrafts(self, transaction):
+        for key in self.metadata:
+            if key not in self.new_metadata:
+                transaction.delete(key)
+
+    def init_transaction(self):
+        return self.r.pipeline(transaction=False)
+
+    def store_in_index(self, transaction, icao24, aircraft, quasi_static_optimization, add_optimization):
+        transaction.geoadd(
+            self.REDIS_GEO_KEY,
+            (aircraft['longitude'], aircraft['latitude'], icao24)
+        )
+        return 1
+
+    '''def process_aicrafts(self, aircrafts_chunk, optimizer=False, quasi_static=True):
         pipeline = self.r.pipeline(transaction=False)
         stored_aircrafts = []
         for aircraft in aircrafts_chunk:
@@ -54,8 +72,8 @@ class RedisIndex(GeospatialIndex):
                 stored_aircrafts.append(icao24)
 
             metadata_key = f"aircraft:{metadata_key}"
-            if metadata_key in self.metadata:
-                self.metadata[metadata_key]['processed'] = True
+           # if metadata_key in self.metadata:
+              #  self.metadata[metadata_key]['processed'] = True
             pipeline.hset(metadata_key, mapping={
                 "callsign": callsign or "",
                 "latitude": latitude,
@@ -63,25 +81,46 @@ class RedisIndex(GeospatialIndex):
                 "velocity": velocity or 0,
                 "altitude": altitude or 0,
             })
+            self.metadata[metadata_key] = {
+                "callsign": callsign or "",
+                "latitude": latitude,
+                "longitude": longitude,
+                "velocity": velocity or 0,
+                "altitude": altitude or 0,
+                "processed": True
+            }
 
+
+
+
+        keys = []
         for key in self.metadata:
             if self.metadata[key]['processed'] is not None and self.metadata[key]['processed'] is False:
                 pipeline.delete(key)
                 icao = key.split(":")[1]
                 pipeline.zrem(self.REDIS_GEO_KEY,  icao)
+                keys.append(key)
+            else:
+                self.metadata[key] = {
+
+                }
         result = pipeline.execute()
 
-        geohash_pipeline = self.r.pipeline(transaction=False)
+        for key in keys:
+            self.metadata.pop(key)
+
+    geohash_pipeline = self.r.pipeline(transaction=False)
         for aircraft in stored_aircrafts:
             geohash_pipeline.geohash(self.REDIS_GEO_KEY, aircraft)
         geohashes = geohash_pipeline.execute()
         for aircraft, geohash in zip(geohashes, stored_aircrafts):
-            pass
+            pass'''
 
 
 
     def load_in_memory(self):
-        self.metadata = {}
+        pass
+        '''self.metadata = {}
         keys = list(self.r.scan_iter("aircraft:*"))
         pipe = self.r.pipeline(transaction=False)
         for key in keys:
@@ -91,13 +130,7 @@ class RedisIndex(GeospatialIndex):
         if len(keys) > 0:
             for key, aircraft in zip(keys, aircrafts):
                 self.metadata[key] = aircraft
-                self.metadata[key]['processed'] = False
-
-    def store_in_index(self, icao24, latitude, longitude):
-        pass
-
-    def store_metadata(self, metadata_key, callsign, latitude, longitude, velocity, altitude):
-        pass
+                self.metadata[key]['processed'] = False'''
 
     def create_backup(self):
         t0 = time.perf_counter()
