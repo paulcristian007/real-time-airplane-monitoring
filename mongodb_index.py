@@ -1,4 +1,4 @@
-from pymongo import MongoClient, GEOSPHERE
+from pymongo import MongoClient, GEOSPHERE, UpdateOne
 import time
 
 from index import GeospatialIndex
@@ -31,10 +31,13 @@ class MongoDbIndex(GeospatialIndex):
         self.backup_collection.create_index(
             [("location", GEOSPHERE)]
         )
+        self.bulk_operations = []
 
 
-    def store_in_index(self, icao24, latitude, longitude):
-        self.collection.update_one(
+    def store_in_index(self, transaction, icao24, aircraft, quasi_static_optimization, add_optimization):
+        if icao24 in self.metadata and aircraft['on_ground'] and quasi_static_optimization:
+            return 0
+        transaction.append(UpdateOne(
             {"icao24": icao24},
             {
                 "$set": {
@@ -42,36 +45,35 @@ class MongoDbIndex(GeospatialIndex):
                     "location": {
                         "type": "Point",
                         "coordinates": [
-                            longitude,
-                            latitude
+                            aircraft['longitude'],
+                            aircraft['latitude']
                         ]
                     }
                 }
             },
-            upsert=True
-        )
+            upsert=True))
+        return 1
+
+    def init_transaction(self):
+        return []
 
 
-    def store_metadata(self, metadata_key, callsign, latitude, longitude, velocity, altitude):
-        self.collection.update_one(
-            {"icao24": metadata_key},
+    def run_transaction(self, transaction):
+        self.collection.bulk_write(transaction, ordered=False)
+
+    def store_metadata(self, transaction, icao24, fields):
+        transaction.append(UpdateOne(
+            {"icao24": icao24},
             {
-                "$set": {
-                    "callsign": callsign or "",
-                    "velocity": velocity or 0,
-                    "altitude": altitude or 0,
-                    "latitude": latitude,
-                    "longitude": longitude,
-                }
+                "$set": fields
             },
-            upsert=True
-        )
+            upsert=True))
 
-    def is_stored_in_index(self, metadata_key):
+    '''def is_stored_in_index(self, metadata_key):
         return self.collection.find_one(
             {"icao24": metadata_key},
             {"_id": 1}
-        ) is not None
+        ) is not None'''
 
         #return self.collection.count_documents({"icao24": metadata_key}, limit=1) > 0
 

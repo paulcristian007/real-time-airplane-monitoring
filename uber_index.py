@@ -24,7 +24,7 @@ class UberIndex(GeospatialIndex):
         self.iteration = 0
 
     def load_in_memory(self):
-        keys = list(self.r.scan_iter("cell:*"))
+        '''keys = list(self.r.scan_iter("cell:*"))
         pipe = self.r.pipeline(transaction=False)
         for key in keys:
             pipe.lrange(key, 0, -1)
@@ -32,7 +32,7 @@ class UberIndex(GeospatialIndex):
 
         for key, result in zip(keys, cells_results):
             cell = key.split(":")[1]
-            self.cell_to_aircraft[cell] = result
+            self.cell_to_aircraft[cell] = result'''
 
 
     def store_metadata(self, transaction, icao24, fields):
@@ -52,6 +52,10 @@ class UberIndex(GeospatialIndex):
             transaction.lrem(f"cell:{self.metadata[icao24]['cell']}", 1, icao24)
             count += 1
         transaction.rpush(f"cell:{aircraft['cell']}", icao24)
+        ''' 
+                TEST HOW CELL LISTS LOOK LIKE BEFORE AND AFTER + HANDLE ALSO self.cell_to_aircraft
+        '''
+
         count += 1
         return count
 
@@ -78,7 +82,8 @@ class UberIndex(GeospatialIndex):
         nearby_cells = h3.grid_disk(center_cell, k)
         candidates = set()
         for cell in nearby_cells:
-            candidates.update(self.cell_to_aircraft.get(cell, set()))
+            aircrafts = self.r.lrange(f"cell:{cell}", 0, -1)
+            candidates.update(aircrafts)
 
         results = []
         for icao24 in candidates:

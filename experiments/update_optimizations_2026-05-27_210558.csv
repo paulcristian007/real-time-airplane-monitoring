@@ -1,0 +1,13 @@
+aircrafts,average time,quasi-static,update,geoadd,update count,geoadd_count
+10000,0.43 s,False,False,False,49550,18818
+10000,0.40 s,True,False,False,45556,17208
+10000,0.37 s,True,True,False,26868,17205
+10000,0.24 s,True,True,True,27681,1134
+25000,0.97 s,False,False,False,123770,47003
+25000,0.93 s,True,False,False,114079,43116
+25000,0.85 s,True,True,False,72049,43096
+25000,0.50 s,True,True,True,66625,2896
+50000,1.90 s,False,False,False,247782,94037
+50000,1.78 s,True,False,False,228460,86224
+50000,1.60 s,True,True,False,136006,86308
+50000,0.92 s,True,True,True,132429,5957
