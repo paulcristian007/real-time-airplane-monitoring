@@ -11,7 +11,7 @@ class UberIndex(GeospatialIndex):
         super().__init__()
         self.cell_to_aircraft = defaultdict(set)
         self.aircraft_metadata = {}
-        self.resolution = 3
+        self.resolution = 2
         REDIS_HOST = "localhost"
         REDIS_PORT = 6379
         self.r = redis.Redis(
@@ -78,7 +78,7 @@ class UberIndex(GeospatialIndex):
             lng,
             self.resolution
         )
-        k = 1
+        k = 0
         nearby_cells = h3.grid_disk(center_cell, k)
         candidates = set()
         for cell in nearby_cells:
@@ -86,19 +86,21 @@ class UberIndex(GeospatialIndex):
             candidates.update(aircrafts)
 
         results = []
+
+        pipe = self.r.pipeline()
         for icao24 in candidates:
-            data = self.r.hgetall(f"aircraft:{icao24}")
-            if data["latitude"] is None or data["longitude"] is None:
+            pipe.hgetall(f"aircraft:{icao24}")
+        candidates = pipe.execute()
+
+
+        for candidate in candidates:
+            if candidate["latitude"] is None or candidate["longitude"] is None:
                 continue
             distance = h3.great_circle_distance(
                 (lat, lng),
-                (float(data["latitude"]), float(data["longitude"])),
+                (float(candidate["latitude"]), float(candidate["longitude"])),
                 unit="km"
             )
             if distance <= 100:
-                results.append((icao24, data))
-
-        print('queries: ')
-        for result in results:
-            print(result)
+                results.append(candidate)
         return results

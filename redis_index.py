@@ -155,10 +155,11 @@ class RedisIndex(GeospatialIndex):
             '''print(
                 f"Aircraft near Cluj: {len(nearby)}, update is: {update_in_progress}"
             )'''
+            pipe = self.r.pipeline()
             for icao24 in nearby:
-                details = self.r.hgetall(f"aircraft:{icao24}")
-                print(icao24, details)
-
+                pipe.hgetall(f"aircraft:{icao24}")
+                #print(icao24, details)
+            results = pipe.execute()
         except Exception as e:
             print("Query error:", e)
 

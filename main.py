@@ -67,9 +67,11 @@ def fetch_opensky(token, no_aircrafts=None):
                 if no_aircrafts and totalCount == no_aircrafts:
                     break
 
+            idd = 0
             while totalCount < no_aircrafts:
+                idd += 1
                 for aircraft in states:
-                    aircraft[0] += '#'
+                    aircraft[0] += f'#{idd}'
                     if aircraft[8]:
                         count += 1
                     aircrafts.append(aircraft)
@@ -95,7 +97,7 @@ def fetch_opensky(token, no_aircrafts=None):
 def run_experiments():
     iterations = 10
     no_aircrafts = [5000, 7500, 10000, 11500, 25000]
-    index_type = 'mongodb'
+    index_type = 'uber'
     experiments_loop(iterations, no_aircrafts, index_type)
 
 
@@ -134,22 +136,20 @@ def experiments_loop(iterations, no_aircrafts, index_type):
 
 
 def run_query_experiments():
-    no_aircrafts = [5000, 7500, 10000, 11500]
-    no_queries = [1000, 5000, 10000]
-    index_type = 'postgis'
+    no_aircrafts = [25000, 50000]
+    no_queries = [1000]
+    index_type = 'redis'
     experiments_query_loop(12, no_aircrafts, no_queries, index_type)
 
 def run_queries(index, no_queries):
-    pass
-    #print(no_queries)
-    #for _ in range(no_queries):
-        #index.nearby_aircraft_monitor(update_in_progress=False)
+    for _ in range(no_queries):
+        index.nearby_aircraft_monitor(update_in_progress=False)
 
 def experiments_update_loop(iterations, no_aircrafts, update_states):
      results = []
      token = get_open_sky_api_token()
      for no_aircraft in no_aircrafts:
-         for i in range(4):
+         for i in range(1):
              execution_times = []
              quasi = update_states[i][0]
              update = update_states[i][1]
@@ -183,7 +183,7 @@ def experiments_update_loop(iterations, no_aircrafts, update_states):
 
 def run_update_count_experiments():
     no_aircrafts = [10000, 25000, 50000]
-    states = [[False, False, False], [True, False, False], [True, True, False], [True, True, True]]
+    states = [[True, True, True]] #[[False, False, False], [True, False, False], [True, True, False], [True, True, True]]
     experiments_update_loop(10, no_aircrafts, states)
 
 def experiments_query_loop(no_threads, no_aircrafts, no_queries, index_type):
@@ -201,8 +201,9 @@ def experiments_query_loop(no_threads, no_aircrafts, no_queries, index_type):
             else:
                 index = UberIndex()
             workers = []
-            fetch_opensky(token=token, no_aircrafts=no_aircraft)
-            process_aircraft(index)
+            aircrafts = fetch_opensky(token=token, no_aircrafts=no_aircraft)
+            index.process_aircrafts(aircrafts, quasi_static_optimization=True, update_optimization=True,
+                                    add_optimization=False)
 
             for _ in range(no_threads):
                 workers.append(threading.Thread(
@@ -228,11 +229,11 @@ def experiments_query_loop(no_threads, no_aircrafts, no_queries, index_type):
 
 def main():
     token = get_open_sky_api_token()
-    index = UberIndex()
-    for _ in range(5):
-        aircrafts = fetch_opensky(token, no_aircrafts=25000)
+    aircrafts = fetch_opensky(token, no_aircrafts=10000)
+    for i in range(5):
+        index = UberIndex()
         start = time.perf_counter()
-        index.load_in_memory()
+        #index.load_in_memory()
         updateCount, indexCount = index.process_aircrafts(aircrafts, quasi_static_optimization=True, update_optimization=True, add_optimization=False)
         end = time.perf_counter()
 
@@ -250,5 +251,5 @@ def main():
 
 #main()
 #run_experiments()
-run_update_count_experiments()
-#run_query_experiments()
+#run_update_count_experiments()
+run_query_experiments()
