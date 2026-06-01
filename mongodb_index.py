@@ -66,14 +66,6 @@ class MongoDbIndex(GeospatialIndex):
             },
             upsert=True))
 
-    '''def is_stored_in_index(self, metadata_key):
-        return self.collection.find_one(
-            {"icao24": metadata_key},
-            {"_id": 1}
-        ) is not None'''
-
-        #return self.collection.count_documents({"icao24": metadata_key}, limit=1) > 0
-
 
     def create_backup(self):
         t0 = time.perf_counter()

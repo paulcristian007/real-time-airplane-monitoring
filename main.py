@@ -100,7 +100,7 @@ def fetch_opensky(token, no_aircrafts=None):
 def run_experiments():
     iterations = 10
     no_aircrafts = [5000, 7500, 10000, 11500, 25000]
-    index_type = 'uber'
+    index_type = 'postgis'
     experiments_loop(iterations, no_aircrafts, index_type)
 
 
@@ -121,7 +121,7 @@ def experiments_loop(iterations, no_aircrafts, index_type):
         for i in range(iterations):
             aircrafts = fetch_opensky(token, no_aircrafts=no_aircraft)
             start = time.perf_counter()
-            index.process_aircrafts(aircrafts, quasi_static_optimization=True, update_optimization=True,
+            index.process_aircrafts(aircrafts, quasi_static_optimization=False, update_optimization=False,
                                     add_optimization=False)
             end = time.perf_counter()
             execution_times.append(end - start)
@@ -139,9 +139,9 @@ def experiments_loop(iterations, no_aircrafts, index_type):
 
 
 def run_query_experiments():
-    no_aircrafts = [25000, 50000]
-    no_queries = [1000]
-    index_type = 'redis'
+    no_aircrafts = [5000]
+    no_queries = [100, 1000]
+    index_type = 'postgis'
     experiments_query_loop(12, no_aircrafts, no_queries, index_type)
 
 def run_queries(index, no_queries):
@@ -230,8 +230,8 @@ def experiments_query_loop(no_threads, no_aircrafts, no_queries, index_type):
         writer.writerows(results)
 
 def run_memory_experiments():
-    no_aircrafts = [5000, 11500, 25000, 50000]#, 25000, 50000]
-    index_type = 'mongodb'
+    no_aircrafts = [25000, 50000]#, 25000, 50000]
+    index_type = 'postgis'
     experiments_memory(no_aircrafts, index_type)
 
 def experiments_memory(no_aircrafts,index_type):
@@ -260,12 +260,13 @@ def experiments_memory(no_aircrafts,index_type):
         writer.writerows(results)
 def main():
     token = get_open_sky_api_token()
-    aircrafts = fetch_opensky(token, no_aircrafts=10000)
+    aircrafts = fetch_opensky(token, no_aircrafts=200)
+    index = PostGISIndex()
+
     for i in range(5):
-        index = UberIndex()
         start = time.perf_counter()
         #index.load_in_memory()
-        updateCount, indexCount = index.process_aircrafts(aircrafts, quasi_static_optimization=True, update_optimization=True, add_optimization=False)
+        updateCount, indexCount = index.process_aircrafts(aircrafts, quasi_static_optimization=False, update_optimization=False, add_optimization=False)
         end = time.perf_counter()
 
         print(f"Number of updates: {updateCount}")

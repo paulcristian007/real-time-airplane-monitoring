@@ -1,6 +1,6 @@
 import psycopg2
 import time
-
+from psycopg2.extras import execute_values
 from index import GeospatialIndex
 
 
@@ -21,7 +21,7 @@ class PostGISIndex(GeospatialIndex):
         # Create table
         self.cursor.execute("""
         CREATE TABLE IF NOT EXISTS aircraft_positions (
-            icao24 TEXT,
+            icao24 TEXT UNIQUE,
             location GEOGRAPHY(POINT, 4326)
         );
         """)
@@ -39,7 +39,7 @@ class PostGISIndex(GeospatialIndex):
 
         self.cursor.execute("DELETE FROM aircraft_positions;")
         self.cursor.execute("DELETE FROM aircraft_metadata;")
-        self.cursor.execute("DELETE FROM aircraft_positions_backup;")
+        #self.cursor.execute("DELETE FROM aircraft_positions_backup;")
 
         # Create spatial index
         self.cursor.execute("""
@@ -59,33 +59,47 @@ class PostGISIndex(GeospatialIndex):
         (LIKE aircraft_positions INCLUDING ALL);
         """)
 
-    def store_in_index(self, icao24, latitude, longitude):
+
+    def init_transaction(self):
+        return {
+            'index': [],
+            'metadata': []
+        }
+
+
+    def run_transaction(self, transaction):
+        self.bulk_store_in_index(transaction['index'])
+        self.bulk_store_metadata(transaction['metadata'])
+
+    def store_in_index(self, transaction, icao24, aircraft, quasi_static_optimization, add_optimization):
+        if icao24 in self.metadata and aircraft['on_ground'] and quasi_static_optimization:
+            return 0
+        transaction['index'].append((icao24, aircraft['longitude'], aircraft['latitude']))
+        return 1
+
+    def bulk_store_in_index(self, rows):
         #cursor = self.conn.cursor()
-        self.cursor.execute("""
+        execute_values(self.cursor, """
         INSERT INTO aircraft_positions (
             icao24,
             location
         )
-        VALUES (
-            %s,
-            ST_SetSRID(
-                ST_MakePoint(%s, %s),
-                4326
-            )::GEOGRAPHY
-        )
-
+        VALUES %s
         ON CONFLICT (icao24)
         DO UPDATE SET
             location = EXCLUDED.location;
-        """, (
-            icao24,
-            longitude,
-            latitude
-        ))
+        """, rows, template="""(%s, ST_SetSRID(ST_MakePoint(%s, %s), 4326)::GEOGRAPHY)""")
 
-    def store_metadata(self, metadata_key, callsign, latitude, longitude, velocity, altitude):
-        #cursor = self.conn.cursor()
-        self.cursor.execute("""
+
+
+    def store_metadata(self, transaction, icao24, fields):
+        metadata = list(fields.values())
+        metadata.insert(0, icao24)
+        transaction['metadata'].append(tuple(metadata))
+
+    def bulk_store_metadata(self, rows):
+        #print(rows)
+        execute_values(self.cursor, """
         INSERT INTO aircraft_metadata (
             icao24,
             callsign,
@@ -94,7 +108,7 @@ class PostGISIndex(GeospatialIndex):
             velocity,
             altitude)
 
-        VALUES (%s, %s, %s, %s, %s, %s)
+        VALUES %s
         ON CONFLICT (icao24)
         DO UPDATE SET
             callsign = EXCLUDED.callsign,
@@ -102,24 +116,7 @@ class PostGISIndex(GeospatialIndex):
             longitude = EXCLUDED.longitude,
             velocity = EXCLUDED.velocity,
             altitude = EXCLUDED.altitude
-        """, (
-            metadata_key,
-            callsign or "",
-            latitude,
-            longitude,
-            velocity or 0,
-            altitude or 0,
-        ))
-
-    def is_stored_in_index(self, icao24):
-        #cursor = self.conn.cursor()
-        self.cursor.execute("""
-        SELECT 1 FROM aircraft_metadata
-        WHERE icao24 = %s
-        LIMIT 1;
-        """, (icao24,))
-        return self.cursor.fetchone() is not None
-
+        """, rows, template="""(%s, %s, %s, %s, %s, %s)""")
 
     def create_backup(self):
         t0 = time.perf_counter()
@@ -167,7 +164,7 @@ class PostGISIndex(GeospatialIndex):
                 )::GEOGRAPHY,
                 %s
             );
-            """, (23.59, 46.77, 100000))
+            """, (28.73, 41.27, 100000))
 
             nearby_aircraft = cursor.fetchall()
 
@@ -194,6 +191,7 @@ class PostGISIndex(GeospatialIndex):
 
 
     def get_memory_usage(self):
+        #self.conn.commit()
         self.cursor.execute("""
         SELECT
             pg_size_pretty(pg_total_relation_size('aircraft_positions')) AS positions_size,
