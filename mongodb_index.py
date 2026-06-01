@@ -12,15 +12,12 @@ class MongoDbIndex(GeospatialIndex):
         MONGO_URI = "mongodb://localhost:27017"
 
         self.client = MongoClient(MONGO_URI)
-
+        self.client.drop_database("aircraft_db")
+        self.client.drop_database("aircraft_positions_backup")
         self.db = self.client["aircraft_db"]
-
         self.collection = self.db["aircraft_positions"]
         self.backup_collection = self.db["aircraft_positions_backup"]
 
-        # Clear collections
-        self.collection.delete_many({})
-        self.backup_collection.delete_many({})
 
         # Create geospatial index
         self.collection.create_index(
@@ -142,9 +139,9 @@ class MongoDbIndex(GeospatialIndex):
             print("Query error:", e)
 
     def get_memory_usage(self):
+        self.client.admin.command("fsync")
         stats = self.db.command("collStats", "aircraft_positions")
         print(stats["indexSizes"])
-
         megabyte_size = 1024 * 1024
         index_size = stats["indexSizes"]["location_2dsphere"] / megabyte_size
         metadata_size = (stats["indexSizes"]["_id_"] + stats["indexSizes"]["icao24_1"]) / megabyte_size

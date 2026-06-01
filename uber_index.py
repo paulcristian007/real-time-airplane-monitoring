@@ -104,3 +104,19 @@ class UberIndex(GeospatialIndex):
             if distance <= 100:
                 results.append(candidate)
         return results
+
+
+    def get_memory_usage(self):
+        index_size = 0
+        metadata_size = 0
+        for key in self.r.scan_iter("aircraft:*"):
+            metadata_size += self.r.memory_usage(key)
+        for key in self.r.scan_iter("cell:*"):
+            index_size += self.r.memory_usage(key)
+
+        megabyte_size = 1024 * 1024
+        index_size /= megabyte_size
+        metadata_size /= megabyte_size
+
+        print(f"Index size: {index_size} MB, Metadata size: {metadata_size} MB")
+        return index_size, metadata_size

@@ -1,6 +1,8 @@
 import threading
 import time
 import csv
+from copy import deepcopy
+
 import requests
 import queue
 from datetime import datetime
@@ -71,10 +73,11 @@ def fetch_opensky(token, no_aircrafts=None):
             while totalCount < no_aircrafts:
                 idd += 1
                 for aircraft in states:
-                    aircraft[0] += f'#{idd}'
+                    new_aircraft = deepcopy(aircraft)
+                    new_aircraft[0] = aircraft[0] + f'#{idd}'
                     if aircraft[8]:
                         count += 1
-                    aircrafts.append(aircraft)
+                    aircrafts.append(new_aircraft)
                     totalCount += 1
                     if no_aircrafts and totalCount == no_aircrafts:
                         break
@@ -226,7 +229,35 @@ def experiments_query_loop(no_threads, no_aircrafts, no_queries, index_type):
         writer.writerow(["aircrafts", "queries", "average query time"])
         writer.writerows(results)
 
+def run_memory_experiments():
+    no_aircrafts = [5000, 11500, 25000, 50000]#, 25000, 50000]
+    index_type = 'mongodb'
+    experiments_memory(no_aircrafts, index_type)
 
+def experiments_memory(no_aircrafts,index_type):
+    results = []
+    token = get_open_sky_api_token()
+    for no_aircraft in no_aircrafts:
+            index = None
+            if index_type == 'redis':
+                index = RedisIndex()
+            elif index_type == 'mongodb':
+                index = MongoDbIndex()
+            elif index_type == 'postgis':
+                index = PostGISIndex()
+            else:
+                index = UberIndex()
+            aircrafts = fetch_opensky(token=token, no_aircrafts=no_aircraft)
+            index.process_aircrafts(aircrafts, quasi_static_optimization=True, update_optimization=True,
+                                    add_optimization=False)
+            index_size, metadata_size = index.get_memory_usage()
+            results.append((no_aircraft, f"{index_size:.2f} MB", f"{metadata_size:.2f} MB"))
+
+    timestamp = datetime.now().strftime("%Y-%m-%d_%H%M%S")
+    with open(f"./experiments/{index_type}_memory_results_{timestamp}.csv", "w", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(["aircrafts", "index size", "metadata size"])
+        writer.writerows(results)
 def main():
     token = get_open_sky_api_token()
     aircrafts = fetch_opensky(token, no_aircrafts=10000)
@@ -252,4 +283,6 @@ def main():
 #main()
 #run_experiments()
 #run_update_count_experiments()
-run_query_experiments()
+#run_query_experiments()
+
+run_memory_experiments()
