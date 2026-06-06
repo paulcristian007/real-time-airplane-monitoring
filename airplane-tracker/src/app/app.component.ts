@@ -169,7 +169,7 @@ export class AppComponent implements OnDestroy {
 
   getAltLabel(altitude: number): string {
     const cat = getAltitudeCategory(altitude);
-    return cat === 'low' ? 'LOW' : cat === 'mid' ? 'MID' : 'HIGH';
+    return cat === 'low' ? 'LOCAL' : cat === 'mid' ? 'DEPARTURE' : 'EN-ROUTE';
   }
 
   formatVelocity(v: number): string {

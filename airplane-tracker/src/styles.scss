@@ -1,6 +1,42 @@
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Barlow+Condensed:wght@400;600;700;800&display=swap');
+
+:root {
+  --bg:           #0b0d11;
+  --bg-panel:     #10141c;
+  --bg-card:      #161b26;
+  --bg-input:     #1a2030;
+  --border:       #252d3d;
+  --border-bright:#2e3a50;
+  --text-primary: #e0e8f5;
+  --text-muted:   #5a6a82;
+  --text-dim:     #3a4a5e;
+  --accent:       #4a9eff;
+  --accent-glow:  rgba(74,158,255,.25);
+
+  --low-color:    #ff4a4a;
+  --low-bg:       rgba(255, 74, 74, .07);
+  --low-border:   rgba(255, 74, 74, .25);
+  --mid-color:    #ffc940;
+  --mid-bg:       rgba(255, 201, 64, .06);
+  --mid-border:   rgba(255, 201, 64, .22);
+  --high-color:   #3ddc84;
+  --high-bg:      rgba(61, 220, 132, .06);
+  --high-border:  rgba(61, 220, 132, .22);
+
+  --font-mono:    'JetBrains Mono', monospace;
+  --font-display: 'Barlow Condensed', sans-serif;
+
+  --radius: 6px;
+  --transition: 200ms cubic-bezier(.4,0,.2,1);
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
 html, body {
   height: 100%;
-  margin: 0;
-  padding: 0;
-  overflow: hidden;
+  background: var(--bg);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  -webkit-font-smoothing: antialiased;
 }
