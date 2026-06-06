@@ -1,9 +1,8 @@
 from collections import defaultdict
-from threading import Lock
 import redis
 import h3
 
-from index import GeospatialIndex
+from .index import GeospatialIndex
 
 
 class UberIndex(GeospatialIndex):
@@ -11,7 +10,7 @@ class UberIndex(GeospatialIndex):
         super().__init__()
         self.cell_to_aircraft = defaultdict(set)
         self.aircraft_metadata = {}
-        self.resolution = 2
+        self.resolution = 3
         REDIS_HOST = "localhost"
         REDIS_PORT = 6379
         self.r = redis.Redis(
@@ -70,15 +69,16 @@ class UberIndex(GeospatialIndex):
     def init_transaction(self):
         return self.r.pipeline(transaction=False)
 
-    def nearby_aircraft_monitor(self, update_in_progress):
-        lng = 28.72
-        lat = 41.27
+    def nearby_aircraft_monitor(self, lng, lat, update_in_progress):
+        if update_in_progress:
+            return []
+
         center_cell = h3.latlng_to_cell(
             lat,
             lng,
             self.resolution
         )
-        k = 0
+        k = 1
         nearby_cells = h3.grid_disk(center_cell, k)
         candidates = set()
         for cell in nearby_cells:
@@ -96,6 +96,8 @@ class UberIndex(GeospatialIndex):
         for candidate in candidates:
             if candidate["latitude"] is None or candidate["longitude"] is None:
                 continue
+            candidate["latitude"] = float(candidate["latitude"])
+            candidate["longitude"] = float(candidate["longitude"])
             distance = h3.great_circle_distance(
                 (lat, lng),
                 (float(candidate["latitude"]), float(candidate["longitude"])),

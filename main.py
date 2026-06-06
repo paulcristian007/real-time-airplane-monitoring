@@ -4,14 +4,13 @@ import csv
 from copy import deepcopy
 
 import requests
-import queue
 from datetime import datetime
 from dotenv import load_dotenv
 
-from mongodb_index import MongoDbIndex
-from redis_index import RedisIndex
-from postgis_index import PostGISIndex
-from uber_index import UberIndex
+from backend.airplanes_monitoring.mongodb_index import MongoDbIndex
+from backend.airplanes_monitoring.redis_index import RedisIndex
+from backend.airplanes_monitoring.postgis_index import PostGISIndex
+from backend.airplanes_monitoring.uber_index import UberIndex
 import os
 
 
@@ -33,9 +32,6 @@ def get_open_sky_api_token():
 
 OPENSKY_URL = "https://opensky-network.org/api/states/all"
 POLL_INTERVAL = 10
-
-aircraft_queue = queue.Queue()
-
 
 def is_quasi_static_object(velocity):
     if velocity is None:
@@ -261,25 +257,24 @@ def experiments_memory(no_aircrafts,index_type):
 def main():
     token = get_open_sky_api_token()
     aircrafts = fetch_opensky(token, no_aircrafts=200)
-    index = PostGISIndex()
+    index = UberIndex()
 
-    for i in range(5):
-        start = time.perf_counter()
-        #index.load_in_memory()
-        updateCount, indexCount = index.process_aircrafts(aircrafts, quasi_static_optimization=False, update_optimization=False, add_optimization=False)
-        end = time.perf_counter()
+    start = time.perf_counter()
+    #index.load_in_memory()
+    updateCount, indexCount = index.process_aircrafts(aircrafts, quasi_static_optimization=False, update_optimization=False, add_optimization=False)
+    end = time.perf_counter()
 
-        print(f"Number of updates: {updateCount}")
-        print(f"Number of ops in index: {indexCount}")
+    print(f"Number of updates: {updateCount}")
+    print(f"Number of ops in index: {indexCount}")
 
-        print(f"Processing time: {end - start:.4f} seconds")
+    print(f"Processing time: {end - start:.4f} seconds")
 
-        start = time.perf_counter()
-        index.nearby_aircraft_monitor(update_in_progress=False)
-        end = time.perf_counter()
-        print(f"Query time: {end - start:.4f} seconds")
-        #index.create_backup()
-        time.sleep(5)
+    start = time.perf_counter()
+    index.nearby_aircraft_monitor(update_in_progress=False)
+    end = time.perf_counter()
+    print(f"Query time: {end - start:.4f} seconds")
+    #index.create_backup()
+    time.sleep(5)
 
 #main()
 #run_experiments()

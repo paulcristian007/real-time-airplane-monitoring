@@ -1,0 +1,206 @@
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<!--  AIRWATCH — Airport Radar Monitor                             -->
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<div class="root">
+
+  <!-- ── Sidebar ────────────────────────────────────────────────── -->
+  <aside class="sidebar">
+    <div class="sidebar-brand">
+      <span class="brand-icon">✈</span>
+      <span class="brand-text">AIR<strong>WATCH</strong></span>
+    </div>
+
+    <div class="sidebar-section">
+      <label class="field-label">Select Airport</label>
+
+      <!-- Search Input -->
+      <div class="search-wrap" [class.open]="dropdownOpen">
+        <span class="search-icon">⌕</span>
+        <input
+          type="text"
+          class="search-input"
+          placeholder="Search by name, IATA, city…"
+          [(ngModel)]="searchQuery"
+          (input)="onSearchInput()"
+          (focus)="openDropdown()"
+          (blur)="closeDropdown()"
+          [disabled]="isMonitoring"
+          autocomplete="off"
+        />
+        <span class="search-chevron" [class.up]="dropdownOpen">›</span>
+
+        <!-- Dropdown -->
+        <ul class="dropdown" *ngIf="dropdownOpen && !loadingAirports">
+          <li
+            *ngFor="let airport of filteredAirports | slice:0:50"
+            class="dropdown-item"
+            [class.selected]="selectedAirport?.id === airport.id"
+            (mousedown)="selectAirport(airport)"
+          >
+            <span class="airport-code">{{ airport.iata || airport.icao || '—' }}</span>
+            <span class="airport-name">{{ airport.name }}</span>
+            <span class="airport-city" *ngIf="airport.city">{{ airport.city }}</span>
+          </li>
+          <li class="dropdown-empty" *ngIf="filteredAirports.length === 0">
+            No airports found
+          </li>
+        </ul>
+
+        <div class="dropdown loading-dd" *ngIf="loadingAirports">
+          <div class="spinner-sm"></div> Loading airports…
+        </div>
+      </div>
+
+      <p class="field-error" *ngIf="airportsError">
+        ⚠ Failed to load airports. <button class="link-btn" (click)="loadAirports()">Retry</button>
+      </p>
+    </div>
+
+    <!-- Selected Airport Card -->
+    <div class="airport-card" *ngIf="selectedAirport && !dropdownOpen">
+      <div class="card-header">
+        <span class="card-iata">{{ selectedAirport.iata || selectedAirport.icao || 'N/A' }}</span>
+        <span class="card-status" [class.active]="isMonitoring">
+          {{ isMonitoring ? '● LIVE' : '○ IDLE' }}
+        </span>
+      </div>
+      <div class="card-name">{{ selectedAirport.name }}</div>
+      <div class="card-coords">
+        {{ selectedAirport.lat.toFixed(4) }}° N &nbsp;/&nbsp; {{ selectedAirport.lon.toFixed(4) }}° E
+      </div>
+    </div>
+
+    <!-- Control Buttons -->
+    <div class="sidebar-section controls" *ngIf="!dropdownOpen">
+      <button
+        class="btn btn-start"
+        *ngIf="!isMonitoring"
+        [disabled]="!selectedAirport"
+        (click)="startMonitoring()"
+      >
+        <span class="btn-icon">▶</span>
+        Start Monitoring
+      </button>
+
+      <button
+        class="btn btn-stop"
+        *ngIf="isMonitoring"
+        (click)="stopMonitoring()"
+      >
+        <span class="btn-icon">■</span>
+        Stop Monitoring
+      </button>
+    </div>
+
+    <!-- Stats -->
+    <div class="sidebar-stats" *ngIf="!dropdownOpen && (isMonitoring || airplanes.length > 0)">
+      <div class="stat">
+        <span class="stat-val">{{ airplanes.length }}</span>
+        <span class="stat-lbl">Aircraft</span>
+      </div>
+      <div class="stat">
+        <span class="stat-val">{{ pollCount }}</span>
+        <span class="stat-lbl">Polls</span>
+      </div>
+    </div>
+
+    <!-- Legend -->
+    <div class="legend" *ngIf="!dropdownOpen">
+      <div class="legend-title">Altitude Legend</div>
+      <div class="legend-row alt-low">
+        <span class="legend-dot"></span>
+        <span>Below 3,000 ft</span>
+        <span class="legend-tag">LOW</span>
+      </div>
+      <div class="legend-row alt-mid">
+        <span class="legend-dot"></span>
+        <span>3,000 – 18,000 ft</span>
+        <span class="legend-tag">MID</span>
+      </div>
+      <div class="legend-row alt-high">
+        <span class="legend-dot"></span>
+        <span>Above 18,000 ft</span>
+        <span class="legend-tag">HIGH</span>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ── Main Panel ──────────────────────────────────────────────── -->
+  <main class="main">
+
+    <!-- Top Bar -->
+    <header class="topbar">
+      <div class="topbar-title">
+        <span *ngIf="!selectedAirport">Select an airport to begin</span>
+        <span *ngIf="selectedAirport && !isMonitoring">
+          Ready to monitor <strong>{{ selectedAirport.name }}</strong>
+        </span>
+        <span *ngIf="isMonitoring">
+          Monitoring <strong>{{ selectedAirport?.name }}</strong>
+        </span>
+      </div>
+      <div class="topbar-meta" *ngIf="lastUpdated">
+        <span class="pulse-dot" *ngIf="isMonitoring"></span>
+        Last updated: {{ lastUpdated | date:'HH:mm:ss' }}
+      </div>
+    </header>
+
+    <!-- Empty state -->
+    <div class="empty-state" *ngIf="!isMonitoring && airplanes.length === 0">
+      <div class="empty-icon">✈</div>
+      <div class="empty-title">No active monitoring</div>
+      <div class="empty-sub">Select an airport from the sidebar and press <em>Start Monitoring</em> to begin tracking nearby aircraft.</div>
+    </div>
+
+    <!-- Loading overlay -->
+    <div class="loading-state" *ngIf="loadingPlanes && airplanes.length === 0">
+      <div class="spinner"></div>
+      <div class="loading-text">Scanning airspace…</div>
+    </div>
+
+    <!-- Error -->
+    <div class="error-banner" *ngIf="monitorError">
+      ⚠ Failed to fetch airplane data. Retrying in 5 seconds…
+    </div>
+
+    <!-- Table -->
+    <div class="table-wrap" *ngIf="airplanes.length > 0">
+      <div class="table-toolbar">
+        <span class="table-count">{{ airplanes.length }} aircraft detected</span>
+        <span class="refresh-badge" *ngIf="loadingPlanes">
+          <span class="spinner-xs"></span> Refreshing…
+        </span>
+      </div>
+
+      <table class="airplane-table">
+        <thead>
+          <tr>
+            <th>Callsign</th>
+            <th>Altitude</th>
+            <th>Velocity</th>
+            <th>Latitude</th>
+            <th>Longitude</th>
+            <th>Band</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr
+            *ngFor="let plane of airplanes; trackBy: trackByCallsign"
+            [class]="getAltClass(plane.altitude)"
+          >
+            <td class="cell-callsign">{{ plane.callsign || '—' }}</td>
+            <td class="cell-alt">{{ formatAltitude(plane.altitude) }}</td>
+            <td class="cell-vel">{{ formatVelocity(plane.velocity) }}</td>
+            <td class="cell-coord">{{ formatCoord(plane.latitude) }}</td>
+            <td class="cell-coord">{{ formatCoord(plane.longitude) }}</td>
+            <td class="cell-band">
+              <span class="band-badge" [class]="getAltClass(plane.altitude)">
+                {{ getAltLabel(plane.altitude) }}
+              </span>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </main>
+</div>
