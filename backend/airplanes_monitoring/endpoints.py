@@ -31,6 +31,8 @@ def get_airports(request):
         response_json = {
             "items": airports
         }
+        #response = Response(response_json, status=200)
+        #response["data"] =
         return Response(response_json, status=200)
     except Exception as e:
         print(str(e))
@@ -43,8 +45,8 @@ def get_nearby_airplanes(request):
         lng = float(request.GET.get("lng"))
         lat = float(request.GET.get("lat"))
         config = apps.get_app_config("airplanes_monitoring")
-        response_json = config.index.nearby_aircraft_monitor(lng, lat, config.update)
-        return Response(response_json, status=200)
+        items = config.index.nearby_aircraft_monitor(lng, lat, config.update)
+        return Response({"items": items, "update": config.update}, status=200)
     except Exception as e:
         print(str(e))
         return Response({"error": str(e)}, status=500)

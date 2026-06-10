@@ -1,7 +1,7 @@
 import { Injectable } from '@angular/core';
-import { HttpClient, HttpParams } from '@angular/common/http';
-import { Observable } from 'rxjs';
-import { Airport, Airplane } from '../models/airport.model';
+import {HttpClient, HttpParams, HttpResponse} from '@angular/common/http';
+import {map, Observable} from 'rxjs';
+import {Airport, Airplane, AirplaneResponse} from '../models/airport.model';
 
 @Injectable({ providedIn: 'root' })
 export class AirportService {
@@ -25,8 +25,8 @@ export class AirportService {
     return this.http.get<Airport[]>(`${this.baseUrl}/fetch_airports`);
   }
 
-  getNearbyAirplanes(lat: number, lon: number): Observable<Airplane[]> {
+  getNearbyAirplanes(lat: number, lon: number): Observable<AirplaneResponse> {
     const params = new HttpParams().set('lat', lat.toString()).set('lng', lon.toString());
-    return this.http.get<Airplane[]>(`${this.baseUrl}/nearby_aircrafts`, { params });
+    return this.http.get<AirplaneResponse>(`${this.baseUrl}/nearby_aircrafts`, { params})
   }
 }

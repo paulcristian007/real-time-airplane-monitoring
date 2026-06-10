@@ -142,6 +142,9 @@
       <div class="topbar-meta" *ngIf="lastUpdated">
         <span class="pulse-dot" *ngIf="isMonitoring"></span>
         Last updated: {{ lastUpdated | date:'HH:mm:ss' }}
+        <span class="warning-badge" *ngIf="isBackupData">
+          ⚠ Loaded backup data
+  </span>
       </div>
     </header>
 

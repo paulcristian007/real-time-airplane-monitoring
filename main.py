@@ -7,9 +7,9 @@ import requests
 from datetime import datetime
 from dotenv import load_dotenv
 
-from backend.airplanes_monitoring.mongodb_index import MongoDbIndex
-from backend.airplanes_monitoring.redis_index import RedisIndex
-from backend.airplanes_monitoring.postgis_index import PostGISIndex
+#from backend.airplanes_monitoring.mongodb_index import MongoDbIndex
+#from backend.airplanes_monitoring.redis_index import RedisIndex
+#from backend.airplanes_monitoring.postgis_index import PostGISIndex
 from backend.airplanes_monitoring.uber_index import UberIndex
 import os
 
@@ -66,7 +66,7 @@ def fetch_opensky(token, no_aircrafts=None):
                     break
 
             idd = 0
-            while totalCount < no_aircrafts:
+            while no_aircrafts and totalCount < no_aircrafts:
                 idd += 1
                 for aircraft in states:
                     new_aircraft = deepcopy(aircraft)
@@ -254,9 +254,35 @@ def experiments_memory(no_aircrafts,index_type):
         writer = csv.writer(f)
         writer.writerow(["aircrafts", "index size", "metadata size"])
         writer.writerows(results)
+
+def startup_without_db():
+    execution_times = []
+    for _ in range(10):
+        start = time.perf_counter()
+        token = get_open_sky_api_token()
+        aircrafts = fetch_opensky(token, no_aircrafts=None)
+        index = UberIndex()
+        index.process_aircrafts(aircrafts, quasi_static_optimization=True, update_optimization=True, add_optimization=True)
+        end = time.perf_counter()
+        print(f"Processing time: {end - start:.4f} seconds")
+        execution_times.append(end - start)
+    avg_time = sum(execution_times) / len(execution_times)
+    print(avg_time)
+
+
+def startup_with_db():
+    execution_times = []
+    for _ in range(10):
+        start = time.perf_counter()
+        index = UberIndex()
+        end = time.perf_counter()
+        print(f"Processing time: {end - start:.4f} seconds")
+        execution_times.append(end - start)
+    avg_time = sum(execution_times) / len(execution_times)
+    print(avg_time)
 def main():
     token = get_open_sky_api_token()
-    aircrafts = fetch_opensky(token, no_aircrafts=200)
+    aircrafts = fetch_opensky(token, no_aircrafts=None)
     index = UberIndex()
 
     start = time.perf_counter()
@@ -280,5 +306,5 @@ def main():
 #run_experiments()
 #run_update_count_experiments()
 #run_query_experiments()
-
-run_memory_experiments()
+#startup_with_db()
+#run_memory_experiments()

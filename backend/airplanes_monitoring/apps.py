@@ -62,14 +62,21 @@ class AirplanesMonitoringConfig(AppConfig):
             print("Polling error:", e)
             return None
 
-    def update_states(self, index, token):
-        aircrafts = self.fetch_opensky(token)
+    def update_states(self, index):
+        if self.token is None:
+            self.token = self.get_open_sky_api_token()
+        aircrafts = self.fetch_opensky(self.token)
+        self.update = True
         index.process_aircrafts(aircrafts, quasi_static_optimization=True, update_optimization=True,
                                 add_optimization=True)
-    def ready(self):
-        token = self.get_open_sky_api_token()
-        self.index = UberIndex()
         self.update = False
+        index.create_backup()
+
+    def ready(self):
+        self.token = None
+        self.index = UberIndex()
+        self.update = True
+        #self.update_states(self.index)
         scheduler = BackgroundScheduler()
-        scheduler.add_job(self.update_states, "interval", seconds=5, args=[self.index, token])
+        scheduler.add_job(self.update_states, "interval", seconds=5, args=[self.index])
         scheduler.start()

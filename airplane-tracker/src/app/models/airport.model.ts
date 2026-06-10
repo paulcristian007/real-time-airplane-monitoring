@@ -17,6 +17,11 @@ export interface Airplane {
   altitude: number;
 }
 
+export interface AirplaneResponse {
+  items: Airplane[];
+  update: boolean;
+}
+
 export type AltitudeCategory = 'low' | 'mid' | 'high';
 
 export function getAltitudeCategory(altitude: number): AltitudeCategory {

@@ -10,7 +10,9 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Subscription, interval, switchMap, catchError, of } from 'rxjs';
 import { AirportService } from './services/airport.service';
-import { Airport, Airplane, getAltitudeCategory } from './models/airport.model';
+import {Airport, Airplane, getAltitudeCategory, AirplaneResponse} from './models/airport.model';
+import {resolve} from "@angular/compiler-cli";
+import {HttpResponse} from "@angular/common/http";
 
 @Component({
   selector: 'app-root',
@@ -36,7 +38,11 @@ export class AppComponent implements OnDestroy {
   loadingPlanes = false;
   monitorError = false;
   lastUpdated: Date | null = null;
+
+  isBackupData = false;
   pollCount = 0;
+
+  private monitorTimeout: any;
 
   private monitorSub?: Subscription;
 
@@ -105,6 +111,102 @@ export class AppComponent implements OnDestroy {
 
   // ── Monitoring ──────────────────────────────────────────────────────────────
 
+  /*startMonitoring(): void {
+  if (!this.selectedAirport || this.isMonitoring) return;
+  this.isMonitoring = true;
+  this.monitorError = false;
+
+  const poll = () => {
+    this.loadingPlanes = true;
+    this.airportService
+      .getNearbyAirplanes(this.selectedAirport!.lat, this.selectedAirport!.lon)
+      .pipe(catchError(() => {
+        this.monitorError = true;
+        this.airplanes = [];
+        this.cdr.markForCheck();
+        return of(null);
+      }))
+      .subscribe((planes) => {
+        if (planes !== null) {
+          this.airplanes = this.sortByAltitude(planes);
+          this.monitorError = false;
+          this.lastUpdated = new Date();
+          this.pollCount++;
+        }
+        this.loadingPlanes = false;
+        this.cdr.markForCheck();
+        if (this.isMonitoring) {
+          const delay = this.monitorError ? 1000 : 5000; // 10s on error, 2s normal
+          this.monitorTimeout = setTimeout(poll, delay);
+        }
+      });
+  };
+
+  poll();
+}
+
+  stopMonitoring(): void {
+    this.isMonitoring = false;
+    clearTimeout(this.monitorTimeout);
+    this.loadingPlanes = false;
+    this.cdr.markForCheck();
+  }*/
+
+  /*startMonitoring(): void {
+  if (!this.selectedAirport || this.isMonitoring) return;
+  this.isMonitoring = true;
+  this.monitorError = false;
+  this.pollCount = 0;
+
+  this.monitorSub = interval(5000)
+    .pipe(
+      switchMap(() => {
+        this.loadingPlanes = true;
+        this.cdr.markForCheck();
+        return this.airportService
+          .getNearbyAirplanes(this.selectedAirport!.lat, this.selectedAirport!.lon)
+          .pipe(catchError(() => {
+            this.monitorError = true;
+            this.airplanes = [];
+            return of(null);
+          }));
+      })
+    )
+    .subscribe({
+      next: (response) => {
+        if (!response) return;
+        const planes = response.body ?? [];
+        this.airplanes = this.sortByAltitude(planes);
+        this.loadingPlanes = false;
+        this.lastUpdated = new Date();
+        this.pollCount++;
+        if (this.airplanes.length > 0) {
+          this.monitorError = false;
+        }
+        this.cdr.markForCheck();
+      },
+    });
+
+  // Immediately fire first request
+  this.loadingPlanes = true;
+  this.airportService
+    .getNearbyAirplanes(this.selectedAirport.lat, this.selectedAirport.lon)
+    .pipe(catchError(() => {
+      this.monitorError = true;
+      this.airplanes = [];
+      return of(null);
+    }))
+    .subscribe((response) => {
+      if (!response) return;
+      const planes = response.body ?? [];
+      this.airplanes = this.sortByAltitude(planes);
+      this.loadingPlanes = false;
+      this.lastUpdated = new Date();
+      this.pollCount++;
+      this.cdr.markForCheck();
+    });
+}*/
+
   startMonitoring(): void {
     if (!this.selectedAirport || this.isMonitoring) return;
     this.isMonitoring = true;
@@ -123,16 +225,21 @@ export class AppComponent implements OnDestroy {
             )
             .pipe(catchError(() => {
               this.monitorError = true;
-              return of([]);
+              return of({"items": [], "update": false});
             }));
         })
       )
       .subscribe({
-        next: (planes) => {
-          this.airplanes = this.sortByAltitude(planes);
+        next: (response) => {
+          const finalresponse = response as AirplaneResponse;
+          this.airplanes = this.sortByAltitude(finalresponse.items);
+          this.isBackupData = finalresponse.update;
           this.loadingPlanes = false;
           this.lastUpdated = new Date();
           this.pollCount++;
+          if (this.airplanes.length > 0) {
+            this.monitorError = false;
+          }
           this.cdr.markForCheck();
         },
       });
@@ -142,8 +249,10 @@ export class AppComponent implements OnDestroy {
     this.airportService
       .getNearbyAirplanes(this.selectedAirport.lat, this.selectedAirport.lon)
       .pipe(catchError(() => { this.monitorError = true; return of([]); }))
-      .subscribe((planes) => {
-        this.airplanes = this.sortByAltitude(planes);
+      .subscribe((response) => {
+        const finalresponse = response as AirplaneResponse;
+        this.airplanes = this.sortByAltitude(finalresponse.items);
+        this.isBackupData = finalresponse.update;
         this.loadingPlanes = false;
         this.lastUpdated = new Date();
         this.pollCount++;

@@ -18,9 +18,10 @@ class UberIndex(GeospatialIndex):
             port=REDIS_PORT,
             decode_responses=True
         )
-        self.r.flushall()
+        #self.r.flushall()
         self.old_cells = {}
         self.iteration = 0
+        self.load_in_memory()
 
     def load_in_memory(self):
         '''keys = list(self.r.scan_iter("cell:*"))
@@ -33,6 +34,30 @@ class UberIndex(GeospatialIndex):
             cell = key.split(":")[1]
             self.cell_to_aircraft[cell] = result'''
 
+        self.metadata = {}
+        keys = list(self.r.scan_iter("backup:aircraft:*"))
+        pipe = self.r.pipeline(transaction=False)
+        for key in keys:
+            pipe.hgetall(key)
+        aircrafts = pipe.execute()
+        '''count = 100
+        for aircraft in aircrafts:
+            count -= 1
+            print(aircraft)
+            if count == 0:
+                break'''
+        print('loaded: ', len(aircrafts))
+        if len(keys) > 0:
+            for key, aircraft in zip(keys, aircrafts):
+                self.metadata[key] = aircraft
+                self.metadata[key]['processed'] = False
+
+    def create_backup(self):
+        pipe = self.r.pipeline(transaction=False)
+        for key in self.r.scan_iter("aircraft:*"):
+            backup_key = key.replace("aircraft:", "backup:aircraft:")
+            pipe.copy(key, backup_key, replace=True)
+        pipe.execute()
 
     def store_metadata(self, transaction, icao24, fields):
         transaction.hset(f"aircraft:{icao24}", mapping=fields)
@@ -70,9 +95,6 @@ class UberIndex(GeospatialIndex):
         return self.r.pipeline(transaction=False)
 
     def nearby_aircraft_monitor(self, lng, lat, update_in_progress):
-        if update_in_progress:
-            return []
-
         center_cell = h3.latlng_to_cell(
             lat,
             lng,
@@ -89,22 +111,28 @@ class UberIndex(GeospatialIndex):
 
         pipe = self.r.pipeline()
         for icao24 in candidates:
-            pipe.hgetall(f"aircraft:{icao24}")
+            key = f"aircraft:{icao24}"
+            if update_in_progress:
+                key = f"backup:aircraft:{icao24}"
+            pipe.hgetall(key)
         candidates = pipe.execute()
-
-
+        print('update in query: ', update_in_progress)
         for candidate in candidates:
-            if candidate["latitude"] is None or candidate["longitude"] is None:
-                continue
-            candidate["latitude"] = float(candidate["latitude"])
-            candidate["longitude"] = float(candidate["longitude"])
-            distance = h3.great_circle_distance(
-                (lat, lng),
-                (float(candidate["latitude"]), float(candidate["longitude"])),
-                unit="km"
-            )
-            if distance <= 100:
-                results.append(candidate)
+            try:
+                if len(candidate) == 0 or candidate["latitude"] is None or candidate["longitude"] is None:
+                    continue
+                candidate["latitude"] = float(candidate["latitude"])
+                candidate["longitude"] = float(candidate["longitude"])
+
+                distance = h3.great_circle_distance(
+                    (lat, lng),
+                    (float(candidate["latitude"]), float(candidate["longitude"])),
+                    unit="km"
+                )
+                if distance <= 100:
+                    results.append(candidate)
+            except ValueError:
+                print('failed: ', candidate)
         return results
 
 
