@@ -24,28 +24,13 @@ class UberIndex(GeospatialIndex):
         self.load_in_memory()
 
     def load_in_memory(self):
-        '''keys = list(self.r.scan_iter("cell:*"))
-        pipe = self.r.pipeline(transaction=False)
-        for key in keys:
-            pipe.lrange(key, 0, -1)
-        cells_results = pipe.execute()
-
-        for key, result in zip(keys, cells_results):
-            cell = key.split(":")[1]
-            self.cell_to_aircraft[cell] = result'''
-
         self.metadata = {}
         keys = list(self.r.scan_iter("backup:aircraft:*"))
         pipe = self.r.pipeline(transaction=False)
         for key in keys:
             pipe.hgetall(key)
         aircrafts = pipe.execute()
-        '''count = 100
-        for aircraft in aircrafts:
-            count -= 1
-            print(aircraft)
-            if count == 0:
-                break'''
+
         print('loaded: ', len(aircrafts))
         if len(keys) > 0:
             for key, aircraft in zip(keys, aircrafts):
@@ -89,7 +74,9 @@ class UberIndex(GeospatialIndex):
     def remove_finished_aircrafts(self, transaction):
         for key in self.metadata:
             if key not in self.new_metadata:
+                backup_key = f"backup:{key}"
                 transaction.delete(key)
+                transaction.delete(backup_key)
 
     def init_transaction(self):
         return self.r.pipeline(transaction=False)

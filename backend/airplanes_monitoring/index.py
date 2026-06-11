@@ -62,9 +62,6 @@ class GeospatialIndex:
             if len(fields.keys()) > 0:
                 self.store_metadata(transaction, icao24, fields)
 
-        '''print('metadata: ')
-        for key in self.metadata:
-            print(self.metadata[key])'''
         print('add: ', len(self.new_metadata.keys()))
         self.remove_finished_aircrafts(transaction)
         self.update_cache()
