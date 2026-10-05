@@ -1,6 +1,10 @@
 # Real-Time Airplane Monitoring App
 A Python Django application that continuously ingests live aircraft data from the OpenSky Network API and provides fast geospatial queries through an optimized persistence layer.
 The project focuses on scalability, efficient database updates, and concurrent read/write operations.
+## Demo 
+
+https://github.com/user-attachments/assets/5a079180-d41e-4f1b-b593-d2f0a35d23f0
+
 ## API 
 - GET /fetch_airports
 - GET /nearby_aircrafts?lat={latitude}&lng={longitude}
@@ -95,11 +99,6 @@ Instead of recomputing and persisting the geohash every **5 seconds**, it is upd
 <p align="center">
 <img width="442" height="278" alt="index_visualisation" src="https://github.com/user-attachments/assets/b896e014-ffea-416e-835b-96220eb2796f" />
 </p>
-
-
-## Demo 
-
-https://github.com/user-attachments/assets/5a079180-d41e-4f1b-b593-d2f0a35d23f0
 
 
 
